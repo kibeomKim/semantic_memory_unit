@@ -21,7 +21,7 @@ class Params():
         self.max_episode = 300000
         self.gamma = 0.95
         self.entropy_coef = 0.1
-        self.gpu_ids_train = [1, 2, 3]
+        self.gpu_ids_train = [1,2]
         self.gpu_ids_test = [0]
         self.lr = 1e-3
         self.tau = 1.0
@@ -37,8 +37,8 @@ class Params():
         self.house_id = -1   #if -1, multi_env
         self.max_steps = 100
         self.semantic_mode = True  #if false, RGB mode on
-        self.log_file = 'training_1107'
-        self.weight_dir = './train_1107/'
+        self.log_file = 'training_1113_kl_em_flag'
+        self.weight_dir = './train_1113_kl_em_flag/'
         self.weight_decay = 0 #0.00005   #
 
 def main():

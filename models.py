@@ -1,9 +1,29 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions import Normal, Independent, kl
 from utils import norm_col_init, weights_init
 
 import pdb
+
+
+def em_initialize(em, img_seq_feat, steps):
+    if em is None:
+        em = [img_seq_feat.data] * 8
+    elif steps < 8:
+        for i in range(8 - steps):
+            em[steps + i] = img_seq_feat.data
+    return em
+
+def em_add(em, img_feat):
+    em.append(img_feat.data)
+    if len(em) > 8:
+        em = em[1:9]
+    return em
+
+def em_add_last(em, img_feat):
+    em[7] = img_feat.data
+    return em
 
 class A3C_LSTM_GA(torch.nn.Module):
     def __init__(self):
@@ -31,12 +51,11 @@ class A3C_LSTM_GA(torch.nn.Module):
         #self.lstm = nn.LSTMCell(512+256, 256)   #512
 
         self.em_mlp = nn.Linear(2048, 256)
-        self.prelu = nn.PReLU()
+        #self.prelu = nn.PReLU()
         #self.internal = nn.Linear(256, 1)
         self.gated = nn.Linear(512, 256)
 
         self.mlp = nn.Linear(512, 192)  #512
-
 
         self.mlp_policy = nn.Linear(128, 64)
         self.actor_linear = nn.Linear(64, 5)
@@ -44,7 +63,11 @@ class A3C_LSTM_GA(torch.nn.Module):
         self.mlp_value = nn.Linear(64, 32) #64
         self.critic_linear = nn.Linear(32, 1)
 
-    def forward(self, state, instruction_idx, hx, cx, em, steps, debugging=False):
+        self.kl_maximized = 0.
+        self.em_flag = False
+
+
+    def forward(self, state, instruction_idx, hx, cx, steps, em, gpu_id, debugging=False):
         x = state
 
         x = F.relu(self.batchnorm1(self.conv1(x)))
@@ -58,27 +81,57 @@ class A3C_LSTM_GA(torch.nn.Module):
         x = x.view(x.size(0), -1)
         img_feat = F.relu(self.fc(x))
 
+        '''
+            input something math that works divide memory units
+            and
+            if minimized with exploration, give more rewards  
+            
+            kl(p(x,y)||p(x)p(y)) => how can i find the joint distribution?       
+        
+        # dist1 = Normal(torch.ones(256), torch.ones(256))    # after batchnorm, mu=0,sigma=1
+        if steps > 2:
+            dist1 = Normal(img_feat.mean(dim=1), img_feat.var(dim=1))
+            dist2 = Normal(hx.mean(dim=1), hx.var(dim=1))
+            # is it enough that dim=1? use it first, encoding second and pca third
+            # dist3 = Normal((img_feat.mean(dim=1)+img_seq_feat.mean(dim=1))/2., (img_seq_feat.var(dim=1)+img_seq_feat.var(dim=1))/2)
+            # kl_divergence = kl.kl_divergence(dist3, dist1 * dist2)
+            with torch.cuda.device(gpu_id):
+                kl_t = kl.kl_divergence(dist1, dist2).cuda()
+                if kl_t >= self.kl_maximized:   # add rewards
+                    self.kl_maximized = kl_t
+                    self.em = em_add(self.em, hx)
+            if debugging is True:
+                print(kl_t)
+        '''
+
         img_seq_feat, cx = self.img_lstm(img_feat, (hx, cx))
 
-        if em is None:
-            em = [img_seq_feat.data] * 8
-        elif steps < 8:
-            for i in range(8-steps):
-                em[steps+i] = img_seq_feat.data
-        if steps % 20 == 0:
-            em[0] = em[1]
-            em[1] = em[2]
-            em[2] = em[3]
-            em[3] = em[4]
-            em[4] = em[5]
-            em[5] = em[6]
-            em[6] = em[7]
-            em[7] = img_seq_feat.data
+        if steps == 0:
+            em = em_initialize(em, img_seq_feat, steps)  # 1. em test whether it works well. 2. learning
+
+        dist1 = Normal(img_feat.mean(dim=1), img_feat.var(dim=1))
+        dist2 = Normal(hx.mean(dim=1), hx.var(dim=1))
+        # is it enough that dim=1? use it first, encoding second and pca third
+        # dist3 = Normal((img_feat.mean(dim=1)+img_seq_feat.mean(dim=1))/2., (img_seq_feat.var(dim=1)+img_seq_feat.var(dim=1))/2)
+        # kl_divergence = kl.kl_divergence(dist3, dist1 * dist2)
+        with torch.cuda.device(gpu_id):
+            kl_t = kl.kl_divergence(dist1, dist2).cuda()
+            if steps % 5 == 0:
+                self.kl_maximized = 0.
+                self.em_flag = False
+
+            if kl_t >= self.kl_maximized:  # add rewards
+                self.kl_maximized = kl_t
+                if self.em_flag is True:
+                    em = em_add_last(em, hx)
+                else:
+                    em = em_add(em, hx)
+                    self.em_flag = True
 
         em_tensor = torch.stack(em)
         em_tensor = em_tensor.view(-1, 2048)    #em_tensor.view(em_tensor.size(0), -1)
 
-        em_output = self.prelu(self.em_mlp(em_tensor))
+        em_output = F.relu(self.em_mlp(em_tensor))
         #internal_reward = F.hardtanh(self.internal(em_output))
 
         # Get the instruction representation

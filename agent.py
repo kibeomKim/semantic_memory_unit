@@ -39,7 +39,7 @@ class run_agent(object):
 
         with torch.cuda.device(self.gpu_id):
             obs = Variable(torch.FloatTensor(self.state)).cuda()
-        value, logit, self.hx, self.cx, self.external_memory = self.model(obs, instruction_idx, self.hx, self.cx, self.external_memory, self.eps_len)
+        value, logit, self.hx, self.cx, self.external_memory = self.model(obs, instruction_idx, self.hx, self.cx, self.eps_len, self.external_memory, self.gpu_id)  #debugging=True
 
         prob = F.softmax(logit, dim=1)
         log_prob = F.log_softmax(logit, dim=1)
@@ -60,7 +60,7 @@ class run_agent(object):
             with torch.no_grad():
                 self.state = preprocess(observation)
                 obs = Variable(torch.FloatTensor(self.state)).cuda()
-                value, logit, self.hx, self.cx, self.external_memory = self.model(obs, instruction_idx, self.hx, self.cx,self.external_memory, self.eps_len)
+                value, logit, self.hx, self.cx, self.external_memory = self.model(obs, instruction_idx, self.hx, self.cx, self.eps_len, self.external_memory, self.gpu_id)
 
                 prob = F.softmax(logit, dim=1)
                 action = prob.max(1)[1].data.cpu().numpy()
@@ -92,7 +92,7 @@ class run_agent(object):
             self.state = preprocess(next_observation)
             with torch.cuda.device(self.gpu_id):
                 obs = Variable(torch.FloatTensor(self.state)).cuda()
-            value, _, _, _, _  = self.model(obs, self.target, self.hx, self.cx, self.external_memory, self.eps_len)
+            value, _, _, _, _ = self.model(obs, self.target, self.hx, self.cx, self.eps_len, self.external_memory, self.gpu_id)
             R = value.data
 
         if self.gpu_id >= 0:
@@ -121,7 +121,7 @@ class run_agent(object):
             policy_loss = policy_loss - self.log_probs[i] * Variable(gae) - params.entropy_coef * self.entropies[i]
 
         self.model.zero_grad()
-        (policy_loss + params.value_loss_coef * value_loss).backward()
+        (policy_loss + params.value_loss_coef * value_loss).backward()  #retain_graph=True
         clip_grad_norm_(self.model.parameters(), 1.0)
         ensure_shared_grads(self.model, shared_model, gpu=self.gpu_id >= 0)
         shared_optimizer.step()

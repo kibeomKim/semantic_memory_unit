@@ -76,6 +76,7 @@ def run_sim(rank, params, shared_model, shared_optimizer, count, lock):
         total_reward, num_steps, good = 0, 0, 0
         Agent.done = False
         done = False
+        Agent.eps_len = 0
 
         while not done:
             num_steps += 1
