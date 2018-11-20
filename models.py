@@ -107,6 +107,7 @@ class A3C_LSTM_GA(torch.nn.Module):
         img_seq_feat, cx = self.img_lstm(img_feat, (hx, cx))
 
         if steps == 0:
+            em = None
             em = em_initialize(em, img_seq_feat, steps)  # 1. em test whether it works well. 2. learning
 
         dist1 = Normal(img_feat.mean(dim=1), img_feat.var(dim=1))
@@ -116,7 +117,7 @@ class A3C_LSTM_GA(torch.nn.Module):
         # kl_divergence = kl.kl_divergence(dist3, dist1 * dist2)
         with torch.cuda.device(gpu_id):
             kl_t = kl.kl_divergence(dist1, dist2).cuda()
-            if steps % 5 == 0:
+            if steps % 10 == 0:
                 self.kl_maximized = 0.
                 self.em_flag = False
 

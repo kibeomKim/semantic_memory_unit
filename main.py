@@ -37,8 +37,8 @@ class Params():
         self.house_id = -1   #if -1, multi_env
         self.max_steps = 100
         self.semantic_mode = True  #if false, RGB mode on
-        self.log_file = 'training_1113_kl_em_flag'
-        self.weight_dir = './train_1113_kl_em_flag/'
+        self.log_file = 'training_1119_kl_em_cnn_lstm_initialize'
+        self.weight_dir = './train_1119_kl_em_cnn_lstm_initialize/'
         self.weight_decay = 0 #0.00005   #
 
 def main():
